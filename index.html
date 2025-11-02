@@ -1,0 +1,103 @@
+import React, { useState } from "react";
+import SeatMap from "./SeatMap";
+import ConditionPanel from "./ConditionPanel";
+import SeatModal from "./SeatModal";
+import { shuffleSeats } from "./shuffleSeats";
+
+const ROWS = 6, COLS = 6;
+
+export default function App() {
+  // 6x6の座席有効状態
+  const [seatsEnabled, setSeatsEnabled] = useState(
+    Array(ROWS).fill().map(() => Array(COLS).fill(true))
+  );
+  // 割り当て結果（6x6の名前またはnull）
+  const [seatAssignments, setSeatAssignments] = useState(
+    Array(ROWS).fill().map(()=>Array(COLS).fill(null))
+  );
+  // 条件管理
+  const [ranges, setRanges] = useState([]);
+  const [fixedSeats, setFixedSeats] = useState([]);
+  const [others, setOthers] = useState([]);
+
+  // モーダル管理
+  const [modal, setModal] = useState({ open: false, mode: "", groupIdx: null });
+
+  // 座席の有効/無効トグル
+  const handleSeatDoubleClick = (row, col) => {
+    setSeatsEnabled(prev =>
+      prev.map((r, i) => r.map((seat, j) => i === row && j === col ? !seat : seat))
+    );
+  };
+
+  // モーダルで範囲指定座席選択
+  const handleRangeSeatSelect = (selected, idx) => {
+    const newRanges = [...ranges];
+    newRanges[idx].seats = selected;
+    setRanges(newRanges);
+    setModal({ open: false });
+  };
+
+  // モーダルで固定席選択
+  const handleFixedSeatSelect = (selected, idx) => {
+    const newFixed = [...fixedSeats];
+    newFixed[idx].seat = selected[0] || null;
+    setFixedSeats(newFixed);
+    setModal({ open: false });
+  };
+
+  // 席替えロジック
+  const handleShuffle = () => {
+    const assignments = shuffleSeats({ranges, fixedSeats, others}, seatsEnabled);
+    setSeatAssignments(assignments);
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100vh" }}>
+      <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center" }}>
+        {/* 座席表 */}
+        <SeatMap
+          seatsEnabled={seatsEnabled}
+          seatAssignments={seatAssignments}
+          onDoubleClick={handleSeatDoubleClick}
+        />
+      </div>
+      <div style={{ flex: 1, background: "#f5f5f5" }}>
+        {/* 条件設定パネル */}
+        <ConditionPanel
+          ranges={ranges}
+          setRanges={setRanges}
+          fixedSeats={fixedSeats}
+          setFixedSeats={setFixedSeats}
+          others={others}
+          setOthers={setOthers}
+          onOpenRangeModal={idx => setModal({ open: true, mode: "range", groupIdx: idx })}
+          onOpenFixedModal={idx => setModal({ open: true, mode: "fixed", groupIdx: idx })}
+          onShuffle={handleShuffle}
+        />
+      </div>
+      {/* モーダル */}
+      <SeatModal
+        open={modal.open}
+        mode={modal.mode}
+        maxSelect={
+          modal.mode === "range"
+            ? ranges[modal.groupIdx]?.names.length || 1
+            : 1
+        }
+        seatsEnabled={seatsEnabled}
+        initialSelected={
+          modal.mode === "range"
+            ? ranges[modal.groupIdx]?.seats || []
+            : fixedSeats[modal.groupIdx]?.seat ? [fixedSeats[modal.groupIdx].seat] : []
+        }
+        onClose={() => setModal({ open: false })}
+        onSubmit={selected =>
+          modal.mode === "range"
+            ? handleRangeSeatSelect(selected, modal.groupIdx)
+            : handleFixedSeatSelect(selected, modal.groupIdx)
+        }
+      />
+    </div>
+  );
+}
