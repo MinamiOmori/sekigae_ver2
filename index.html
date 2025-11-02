@@ -1,103 +1,323 @@
-import React, { useState } from "react";
-import SeatMap from "./SeatMap";
-import ConditionPanel from "./ConditionPanel";
-import SeatModal from "./SeatModal";
-import { shuffleSeats } from "./shuffleSeats";
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>席替えサイト Ver2</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { margin:0; font-family:sans-serif; }
+    .seat-map { display: flex; flex-direction: column; gap: 8px; }
+    .seat-row { display: flex; gap: 8px; }
+    .seat { width: 56px; height: 56px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: bold; border: 2px solid #bbb; user-select: none; cursor: pointer; }
+    .seat.enabled { background: #4caf50; color: white; }
+    .seat.disabled { background: #b0b0b0; color: #888; cursor: not-allowed; }
+    .seat.selected { background: #ff9800; color: #fff; border: 2px solid #f57c00; }
+    .modal-bg { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.4); display:flex; justify-content:center; align-items:center; z-index:1000; }
+    .modal-main { background:white; padding:32px; border-radius:12px; min-width:370px;}
+    @media (max-width: 900px) {
+      .main-layout { flex-direction: column; }
+      .main-left, .main-right { width:100%; min-width:0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <!-- React & ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script>
+    const { useState, useEffect } = React;
+    const ROWS = 6, COLS = 6;
 
-const ROWS = 6, COLS = 6;
+    // 座席表
+    function SeatMap({
+      seatsEnabled,
+      seatAssignments,
+      selectMode = false,
+      selectedSeats = [],
+      onSeatClick,
+      maxSelect = 36,
+      onDoubleClick
+    }) {
+      return React.createElement('div', { className: "seat-map" },
+        seatsEnabled.map((row, i) =>
+          React.createElement('div', { className: "seat-row", key: i },
+            row.map((enabled, j) => {
+              const key = `${i},${j}`;
+              const selected = selectedSeats?.includes(key);
+              return React.createElement('div', {
+                  key: j,
+                  className: `seat ${enabled ? "enabled" : "disabled"}${selected ? " selected" : ""}`,
+                  onClick: selectMode && enabled ? () => onSeatClick(i, j) : undefined,
+                  onDoubleClick: !selectMode && onDoubleClick ? () => onDoubleClick(i, j) : undefined
+                },
+                React.createElement('div', null, String.fromCharCode(65 + i) + '-' + (j + 1)),
+                React.createElement('div', { style: { fontSize:"0.8em" } }, seatAssignments?.[i]?.[j] || "")
+              );
+            })
+          )
+        )
+      );
+    }
 
-export default function App() {
-  // 6x6の座席有効状態
-  const [seatsEnabled, setSeatsEnabled] = useState(
-    Array(ROWS).fill().map(() => Array(COLS).fill(true))
-  );
-  // 割り当て結果（6x6の名前またはnull）
-  const [seatAssignments, setSeatAssignments] = useState(
-    Array(ROWS).fill().map(()=>Array(COLS).fill(null))
-  );
-  // 条件管理
-  const [ranges, setRanges] = useState([]);
-  const [fixedSeats, setFixedSeats] = useState([]);
-  const [others, setOthers] = useState([]);
+    // モーダル座席選択
+    function SeatModal({
+      open,
+      mode,
+      maxSelect,
+      seatsEnabled,
+      initialSelected = [],
+      onClose,
+      onSubmit
+    }) {
+      const [selected, setSelected] = useState(initialSelected);
 
-  // モーダル管理
-  const [modal, setModal] = useState({ open: false, mode: "", groupIdx: null });
+      useEffect(() => { setSelected(initialSelected); }, [initialSelected, open]);
 
-  // 座席の有効/無効トグル
-  const handleSeatDoubleClick = (row, col) => {
-    setSeatsEnabled(prev =>
-      prev.map((r, i) => r.map((seat, j) => i === row && j === col ? !seat : seat))
-    );
-  };
-
-  // モーダルで範囲指定座席選択
-  const handleRangeSeatSelect = (selected, idx) => {
-    const newRanges = [...ranges];
-    newRanges[idx].seats = selected;
-    setRanges(newRanges);
-    setModal({ open: false });
-  };
-
-  // モーダルで固定席選択
-  const handleFixedSeatSelect = (selected, idx) => {
-    const newFixed = [...fixedSeats];
-    newFixed[idx].seat = selected[0] || null;
-    setFixedSeats(newFixed);
-    setModal({ open: false });
-  };
-
-  // 席替えロジック
-  const handleShuffle = () => {
-    const assignments = shuffleSeats({ranges, fixedSeats, others}, seatsEnabled);
-    setSeatAssignments(assignments);
-  };
-
-  return (
-    <div style={{ display: "flex", height: "100vh" }}>
-      <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center" }}>
-        {/* 座席表 */}
-        <SeatMap
-          seatsEnabled={seatsEnabled}
-          seatAssignments={seatAssignments}
-          onDoubleClick={handleSeatDoubleClick}
-        />
-      </div>
-      <div style={{ flex: 1, background: "#f5f5f5" }}>
-        {/* 条件設定パネル */}
-        <ConditionPanel
-          ranges={ranges}
-          setRanges={setRanges}
-          fixedSeats={fixedSeats}
-          setFixedSeats={setFixedSeats}
-          others={others}
-          setOthers={setOthers}
-          onOpenRangeModal={idx => setModal({ open: true, mode: "range", groupIdx: idx })}
-          onOpenFixedModal={idx => setModal({ open: true, mode: "fixed", groupIdx: idx })}
-          onShuffle={handleShuffle}
-        />
-      </div>
-      {/* モーダル */}
-      <SeatModal
-        open={modal.open}
-        mode={modal.mode}
-        maxSelect={
-          modal.mode === "range"
-            ? ranges[modal.groupIdx]?.names.length || 1
-            : 1
+      function handleSelect(row, col) {
+        const key = `${row},${col}`;
+        if (selected.includes(key)) {
+          setSelected(selected.filter(s => s !== key));
+        } else if (selected.length < maxSelect) {
+          setSelected([...selected, key]);
         }
-        seatsEnabled={seatsEnabled}
-        initialSelected={
-          modal.mode === "range"
-            ? ranges[modal.groupIdx]?.seats || []
-            : fixedSeats[modal.groupIdx]?.seat ? [fixedSeats[modal.groupIdx].seat] : []
+      }
+
+      if (!open) return null;
+      return React.createElement('div', { className: "modal-bg" },
+        React.createElement('div', { className: "modal-main" },
+          React.createElement('h3', null, mode === "range" ? "範囲指定席選択" : "固定席選択"),
+          React.createElement(SeatMap, {
+            selectMode: true,
+            seatsEnabled,
+            selectedSeats: selected,
+            onSeatClick: handleSelect,
+            maxSelect
+          }),
+          React.createElement('div', { style: {marginTop:16} },
+            React.createElement('button', { onClick: () => onSubmit(selected), style:{marginRight:8}}, "OK"),
+            React.createElement('button', { onClick: onClose }, "キャンセル")
+          )
+        )
+      );
+    }
+
+    // 条件設定パネル
+    function ConditionPanel({
+      ranges, setRanges,
+      fixedSeats, setFixedSeats,
+      others, setOthers,
+      onOpenRangeModal,
+      onOpenFixedModal,
+      onShuffle
+    }) {
+      return React.createElement('div', { style: { padding: "24px" } },
+        React.createElement('h2', null, "座席条件設定"),
+
+        // 範囲指定グループ
+        React.createElement('h3', null, "範囲指定"),
+        ...ranges.map((group, idx) => React.createElement('div', { key: idx, style:{marginBottom:"8px"}},
+          React.createElement('input', {
+            type: "text", placeholder: "名前（カンマ区切り）",
+            value: group.names.join(","),
+            onChange: e => {
+              const newRanges = ranges.slice();
+              newRanges[idx].names = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+              setRanges(newRanges);
+            },
+            style: { marginRight: "8px" }
+          }),
+          React.createElement('button', { onClick: () => onOpenRangeModal(idx) }, "範囲指定"),
+          React.createElement('span', { style:{marginLeft:8, fontSize:"0.9em"} }, group.seats?.length ? `指定席数:${group.seats.length}` : ""),
+          React.createElement('button', {
+            onClick: () => setRanges(ranges.filter((_, i) => i !== idx)),
+            style:{marginLeft:"8px"}
+          }, "削除")
+        )),
+        React.createElement('button', { onClick: () => setRanges([...ranges, { names: [], seats: [] }]) }, "範囲指定を追加"),
+
+        // 固定席
+        React.createElement('h3', { style: { marginTop: "16px" } }, "固定席"),
+        ...fixedSeats.map((fix, idx) => React.createElement('div', { key: idx, style:{marginBottom:"8px"}},
+          React.createElement('input', {
+            type: "text", placeholder: "名前",
+            value: fix.name,
+            onChange: e => {
+              const newFixed = fixedSeats.slice();
+              newFixed[idx].name = e.target.value;
+              setFixedSeats(newFixed);
+            },
+            style: { marginRight: "8px" }
+          }),
+          React.createElement('button', { onClick: () => onOpenFixedModal(idx) }, "座席選択"),
+          React.createElement('span', { style:{marginLeft:8, fontSize:"0.9em"} }, fix.seat ? `指定席:${fix.seat}` : ""),
+          React.createElement('button', {
+            onClick: () => setFixedSeats(fixedSeats.filter((_, i) => i !== idx)),
+            style:{marginLeft:"8px"}
+          }, "削除")
+        )),
+        React.createElement('button', { onClick: () => setFixedSeats([...fixedSeats, { name: "", seat: null }]) }, "固定席を追加"),
+
+        // 範囲指定なし
+        React.createElement('h3', { style: { marginTop: "16px" } }, "範囲指定なし"),
+        React.createElement('textarea', {
+          placeholder: "名前（改行区切り）",
+          value: others.join("\n"),
+          onChange: e => setOthers(e.target.value.split("\n").map(s => s.trim()).filter(Boolean)),
+          rows: 4,
+          style: { width: "100%", marginBottom: "16px" }
+        }),
+
+        // 席替えボタン
+        React.createElement('button', {
+          style: {
+            marginTop: "24px",
+            background: "#2196f3",
+            color: "white",
+            padding: "12px 24px",
+            fontSize: "1.2rem",
+            borderRadius: "8px",
+            border: "none",
+            width: "100%"
+          },
+          onClick: onShuffle
+        }, "席替えする")
+      );
+    }
+
+    // 席替えロジック
+    function shuffleSeats({ranges, fixedSeats, others}, seatsEnabled) {
+      let seatAssignments = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+      let usedSeats = new Set();
+
+      // 固定席
+      fixedSeats.forEach(({ name, seat }) => {
+        if (!name || !seat) return;
+        const [row, col] = seat.split(",").map(Number);
+        if (seatsEnabled[row][col] && !seatAssignments[row][col]) {
+          seatAssignments[row][col] = name;
+          usedSeats.add(seat);
         }
-        onClose={() => setModal({ open: false })}
-        onSubmit={selected =>
-          modal.mode === "range"
-            ? handleRangeSeatSelect(selected, modal.groupIdx)
-            : handleFixedSeatSelect(selected, modal.groupIdx)
+      });
+
+      // 範囲指定
+      ranges.forEach(({ names, seats }) => {
+        if (!seats) seats = [];
+        let availableSeats = seats.filter(s => {
+          const [r, c] = s.split(",").map(Number);
+          return seatsEnabled[r][c] && !usedSeats.has(s) && !seatAssignments[r][c];
+        });
+        let shuffledSeats = availableSeats.slice().sort(() => Math.random() - 0.5);
+        let shuffledNames = names.slice().sort(() => Math.random() - 0.5);
+        shuffledNames.forEach((name, i) => {
+          if (shuffledSeats[i]) {
+            const [row, col] = shuffledSeats[i].split(",").map(Number);
+            seatAssignments[row][col] = name;
+            usedSeats.add(shuffledSeats[i]);
+          }
+        });
+      });
+
+      // 残り席
+      let remainingSeats = [];
+      for (let i = 0; i < ROWS; i++)
+        for (let j = 0; j < COLS; j++)
+          if (seatsEnabled[i][j] && !seatAssignments[i][j])
+            remainingSeats.push([i, j]);
+      let shuffledOthers = others.slice().sort(() => Math.random() - 0.5);
+      shuffledOthers.forEach((name, i) => {
+        if (remainingSeats[i]) {
+          const [row, col] = remainingSeats[i];
+          seatAssignments[row][col] = name;
         }
-      />
-    </div>
-  );
-}
+      });
+
+      return seatAssignments;
+    }
+
+    // 全体App
+    function App() {
+      const [seatsEnabled, setSeatsEnabled] = useState(
+        Array(ROWS).fill().map(() => Array(COLS).fill(true))
+      );
+      const [seatAssignments, setSeatAssignments] = useState(
+        Array(ROWS).fill().map(()=>Array(COLS).fill(null))
+      );
+      const [ranges, setRanges] = useState([]);
+      const [fixedSeats, setFixedSeats] = useState([]);
+      const [others, setOthers] = useState([]);
+      const [modal, setModal] = useState({ open: false, mode: "", groupIdx: null });
+
+      // 有効/無効トグル
+      function handleSeatDoubleClick(row, col) {
+        setSeatsEnabled(prev =>
+          prev.map((r, i) => r.map((seat, j) => i === row && j === col ? !seat : seat))
+        );
+      }
+
+      // 範囲指定座席選択
+      function handleRangeSeatSelect(selected, idx) {
+        const newRanges = ranges.slice();
+        newRanges[idx].seats = selected;
+        setRanges(newRanges);
+        setModal({ open: false });
+      }
+
+      // 固定席選択
+      function handleFixedSeatSelect(selected, idx) {
+        const newFixed = fixedSeats.slice();
+        newFixed[idx].seat = selected[0] || null;
+        setFixedSeats(newFixed);
+        setModal({ open: false });
+      }
+
+      // 席替え
+      function handleShuffle() {
+        const assignments = shuffleSeats({ranges, fixedSeats, others}, seatsEnabled);
+        setSeatAssignments(assignments);
+      }
+
+      return React.createElement('div', { className:"main-layout", style:{display:"flex", height:"100vh"} },
+        React.createElement('div', { className:"main-left", style:{flex:1, display:"flex", justifyContent:"center", alignItems:"center", minWidth:380} },
+          React.createElement(SeatMap, {
+            seatsEnabled,
+            seatAssignments,
+            onDoubleClick: handleSeatDoubleClick
+          })
+        ),
+        React.createElement('div', { className:"main-right", style:{flex:1, background:"#f5f5f5"} },
+          React.createElement(ConditionPanel, {
+            ranges, setRanges,
+            fixedSeats, setFixedSeats,
+            others, setOthers,
+            onOpenRangeModal: idx => setModal({ open: true, mode: "range", groupIdx: idx }),
+            onOpenFixedModal: idx => setModal({ open: true, mode: "fixed", groupIdx: idx }),
+            onShuffle: handleShuffle
+          })
+        ),
+        React.createElement(SeatModal, {
+          open: modal.open,
+          mode: modal.mode,
+          maxSelect:
+            modal.mode === "range"
+              ? ranges[modal.groupIdx]?.names.length || 1
+              : 1,
+          seatsEnabled: seatsEnabled,
+          initialSelected:
+            modal.mode === "range"
+              ? ranges[modal.groupIdx]?.seats || []
+              : fixedSeats[modal.groupIdx]?.seat ? [fixedSeats[modal.groupIdx].seat] : [],
+          onClose: () => setModal({ open: false }),
+          onSubmit: selected =>
+            modal.mode === "range"
+              ? handleRangeSeatSelect(selected, modal.groupIdx)
+              : handleFixedSeatSelect(selected, modal.groupIdx)
+        })
+      );
+    }
+
+    // レンダリング
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
